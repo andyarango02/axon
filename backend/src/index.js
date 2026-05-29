@@ -3,17 +3,15 @@
 const config = require('./shared/config');
 
 // ── Infrastructure ──────────────────────────────────────────
-// const { getSupabaseClient }  = require('./infrastructure/persistence/supabase/SupabaseClient');
-// const { getTwilioClient }    = require('./infrastructure/messaging/twilio/TwilioClient');
-// const { getOpenAIClient }    = require('./infrastructure/ai/openai/OpenAIClient');
-// const InMemoryEventBus       = require('./infrastructure/events/InMemoryEventBus');
-// const JwtService             = require('./infrastructure/auth/JwtService');
+const { getSupabaseClient } = require('./infrastructure/persistence/supabase/SupabaseClient');
+const InMemoryEventBus      = require('./infrastructure/events/InMemoryEventBus');
 
 // ── Repositories ────────────────────────────────────────────
-// const ConversationRepository      = require('./infrastructure/persistence/supabase/ConversationRepository');
+const CustomerRepository     = require('./infrastructure/persistence/supabase/CustomerRepository');
+const ConversationRepository = require('./infrastructure/persistence/supabase/ConversationRepository');
+const MessageRepository      = require('./infrastructure/persistence/supabase/MessageRepository');
 // const QuotationRepository         = require('./infrastructure/persistence/supabase/QuotationRepository');
 // const OpportunityRepository       = require('./infrastructure/persistence/supabase/OpportunityRepository');
-// const CustomerRepository          = require('./infrastructure/persistence/supabase/CustomerRepository');
 // const ProductRepository           = require('./infrastructure/persistence/supabase/ProductRepository');
 // const PricingRuleRepository       = require('./infrastructure/persistence/supabase/PricingRuleRepository');
 // const WorkflowDefinitionRepository = require('./infrastructure/persistence/supabase/WorkflowDefinitionRepository');
@@ -21,43 +19,57 @@ const config = require('./shared/config');
 // const TenantRepository            = require('./infrastructure/persistence/supabase/TenantRepository');
 // const UserRepository              = require('./infrastructure/persistence/supabase/UserRepository');
 
-// ── AI & Messaging ──────────────────────────────────────────
-// const OpenAIService          = require('./infrastructure/ai/openai/OpenAIService');
-// const TwilioWhatsAppService  = require('./infrastructure/messaging/twilio/TwilioWhatsAppService');
-
 // ── Use Cases ───────────────────────────────────────────────
-// const HandleIncomingMessage  = require('./application/conversation/use-cases/HandleIncomingMessage');
+const FindOrCreateCustomer   = require('./application/customer/use-cases/FindOrCreateCustomer');
+const HandleIncomingMessage  = require('./application/conversation/use-cases/HandleIncomingMessage');
+const GetConversationHistory = require('./application/conversation/use-cases/GetConversationHistory');
 // const GenerateQuotationDraft = require('./application/quotation/use-cases/GenerateQuotationDraft');
 
-// ── Interface ───────────────────────────────────────────────
-const { createApp }        = require('./interface/app');
-const errorHandler         = require('./interface/http/middleware/errorHandler.middleware');
-const webhookRoutes        = require('./interface/http/routes/webhook.routes');
-const authRoutes           = require('./interface/http/routes/auth.routes');
-const quotationRoutes      = require('./interface/http/routes/quotation.routes');
-const pipelineRoutes       = require('./interface/http/routes/pipeline.routes');
-const conversationRoutes   = require('./interface/http/routes/conversation.routes');
-const catalogRoutes        = require('./interface/http/routes/catalog.routes');
-const workflowRoutes       = require('./interface/http/routes/workflow.routes');
+// ── Controllers ─────────────────────────────────────────────
+const WebhookController      = require('./interface/http/controllers/WebhookController');
+const ConversationController = require('./interface/http/controllers/ConversationController');
 
-// Placeholder handler — all stub endpoints return 501 until use-cases are wired
+// ── Interface ───────────────────────────────────────────────
+const { createApp }      = require('./interface/app');
+const errorHandler       = require('./interface/http/middleware/errorHandler.middleware');
+const webhookRoutes      = require('./interface/http/routes/webhook.routes');
+const authRoutes         = require('./interface/http/routes/auth.routes');
+const quotationRoutes    = require('./interface/http/routes/quotation.routes');
+const pipelineRoutes     = require('./interface/http/routes/pipeline.routes');
+const conversationRoutes = require('./interface/http/routes/conversation.routes');
+const catalogRoutes      = require('./interface/http/routes/catalog.routes');
+const workflowRoutes     = require('./interface/http/routes/workflow.routes');
+
+// Stubs for domains not yet implemented
 const notImplemented = (req, res) =>
   res.status(501).json({ error: 'Not implemented' });
 
-// Proxy that turns any controller method access into a notImplemented handler
-const stubController = new Proxy(
-  {},
-  { get: () => notImplemented }
-);
-
-// Passthrough middleware stubs until auth/tenant services are wired
-const passthrough = (req, res, next) => next();
+const stubController = new Proxy({}, { get: () => notImplemented });
+const passthrough    = (req, res, next) => next();
 
 async function bootstrap() {
+  const supabase = getSupabaseClient();
+  const eventBus = new InMemoryEventBus();
+
+  // repositories
+  const customerRepository     = new CustomerRepository(supabase);
+  const conversationRepository = new ConversationRepository(supabase);
+  const messageRepository      = new MessageRepository(supabase);
+
+  // use cases
+  // eslint-disable-next-line no-unused-vars
+  const findOrCreateCustomer   = new FindOrCreateCustomer({ customerRepository, eventBus });
+  const handleIncomingMessage  = new HandleIncomingMessage({ conversationRepository, customerRepository, messageRepository, eventBus });
+  const getConversationHistory = new GetConversationHistory({ conversationRepository, messageRepository });
+
+  // controllers
+  const webhookController      = new WebhookController({ handleIncomingMessage });
+  const conversationController = new ConversationController({ getConversationHistory });
+
   const app = createApp({
     webhookRoutes: webhookRoutes({
-      webhookController:        stubController,
-      validateTwilioSignature:  passthrough,
+      webhookController,
+      validateTwilioSignature: passthrough,
     }),
     authRoutes: authRoutes({
       authController: stubController,
@@ -73,9 +85,9 @@ async function bootstrap() {
       tenantMiddleware:   passthrough,
     }),
     conversationRoutes: conversationRoutes({
-      conversationController: stubController,
-      authMiddleware:         passthrough,
-      tenantMiddleware:       passthrough,
+      conversationController,
+      authMiddleware:  passthrough,
+      tenantMiddleware: passthrough,
     }),
     catalogRoutes: catalogRoutes({
       catalogController: stubController,
