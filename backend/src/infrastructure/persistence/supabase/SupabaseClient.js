@@ -8,12 +8,14 @@ let client = null;
 function getSupabaseClient() {
   if (client) return client;
 
-  const { url, anonKey } = config.supabase;
+  const { url, serviceRoleKey } = config.supabase;
 
-  if (!url)     throw new Error('Missing required environment variable: SUPABASE_URL');
-  if (!anonKey) throw new Error('Missing required environment variable: SUPABASE_ANON_KEY');
+  if (!url)            throw new Error('Missing required environment variable: SUPABASE_URL');
+  if (!serviceRoleKey) throw new Error('Missing required environment variable: SUPABASE_SERVICE_ROLE_KEY');
 
-  client = createClient(url, anonKey);
+  // serviceRoleKey bypasses Row Level Security — required for all server-side DB operations.
+  // Never expose this key to browser clients.
+  client = createClient(url, serviceRoleKey);
   return client;
 }
 

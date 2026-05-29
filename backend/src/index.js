@@ -10,24 +10,44 @@ const InMemoryEventBus      = require('./infrastructure/events/InMemoryEventBus'
 const CustomerRepository     = require('./infrastructure/persistence/supabase/CustomerRepository');
 const ConversationRepository = require('./infrastructure/persistence/supabase/ConversationRepository');
 const MessageRepository      = require('./infrastructure/persistence/supabase/MessageRepository');
+const ProductRepository      = require('./infrastructure/persistence/supabase/ProductRepository');
+const PricingRuleRepository  = require('./infrastructure/persistence/supabase/PricingRuleRepository');
+const PriceListRepository    = require('./infrastructure/persistence/supabase/PriceListRepository');
 // const QuotationRepository         = require('./infrastructure/persistence/supabase/QuotationRepository');
 // const OpportunityRepository       = require('./infrastructure/persistence/supabase/OpportunityRepository');
-// const ProductRepository           = require('./infrastructure/persistence/supabase/ProductRepository');
-// const PricingRuleRepository       = require('./infrastructure/persistence/supabase/PricingRuleRepository');
 // const WorkflowDefinitionRepository = require('./infrastructure/persistence/supabase/WorkflowDefinitionRepository');
 // const WorkflowExecutionRepository = require('./infrastructure/persistence/supabase/WorkflowExecutionRepository');
 // const TenantRepository            = require('./infrastructure/persistence/supabase/TenantRepository');
 // const UserRepository              = require('./infrastructure/persistence/supabase/UserRepository');
 
-// ── Use Cases ───────────────────────────────────────────────
+// ── Domain services ─────────────────────────────────────────
+const PriceCalculator = require('./domain/catalog/services/PriceCalculator');
+
+// ── Use Cases — conversation ─────────────────────────────────
 const FindOrCreateCustomer   = require('./application/customer/use-cases/FindOrCreateCustomer');
 const HandleIncomingMessage  = require('./application/conversation/use-cases/HandleIncomingMessage');
 const GetConversationHistory = require('./application/conversation/use-cases/GetConversationHistory');
+
+// ── Use Cases — catalog ──────────────────────────────────────
+const SearchProducts    = require('./application/catalog/use-cases/SearchProducts');
+const CreateProduct     = require('./application/catalog/use-cases/CreateProduct');
+const UpdateProduct     = require('./application/catalog/use-cases/UpdateProduct');
+const DeleteProduct     = require('./application/catalog/use-cases/DeleteProduct');
+const CreatePricingRule = require('./application/catalog/use-cases/CreatePricingRule');
+const UpdatePricingRule = require('./application/catalog/use-cases/UpdatePricingRule');
+const DeletePricingRule = require('./application/catalog/use-cases/DeletePricingRule');
+const GetPricingRule    = require('./application/catalog/use-cases/GetPricingRule');
+const ListPricingRules  = require('./application/catalog/use-cases/ListPricingRules');
+const CreatePriceList   = require('./application/catalog/use-cases/CreatePriceList');
+const ManagePriceList   = require('./application/catalog/use-cases/ManagePriceList');
+const ListPriceLists    = require('./application/catalog/use-cases/ListPriceLists');
+const GetPriceForProduct = require('./application/catalog/use-cases/GetPriceForProduct');
 // const GenerateQuotationDraft = require('./application/quotation/use-cases/GenerateQuotationDraft');
 
 // ── Controllers ─────────────────────────────────────────────
 const WebhookController      = require('./interface/http/controllers/WebhookController');
 const ConversationController = require('./interface/http/controllers/ConversationController');
+const CatalogController      = require('./interface/http/controllers/CatalogController');
 
 // ── Interface ───────────────────────────────────────────────
 const { createApp }      = require('./interface/app');
@@ -55,16 +75,40 @@ async function bootstrap() {
   const customerRepository     = new CustomerRepository(supabase);
   const conversationRepository = new ConversationRepository(supabase);
   const messageRepository      = new MessageRepository(supabase);
+  const productRepository      = new ProductRepository(supabase);
+  const pricingRuleRepository  = new PricingRuleRepository(supabase);
+  const priceListRepository    = new PriceListRepository(supabase);
 
-  // use cases
+  // domain services
+  const priceCalculator = new PriceCalculator();
+
+  // use cases — conversation
   // eslint-disable-next-line no-unused-vars
   const findOrCreateCustomer   = new FindOrCreateCustomer({ customerRepository, eventBus });
   const handleIncomingMessage  = new HandleIncomingMessage({ conversationRepository, customerRepository, messageRepository, eventBus });
   const getConversationHistory = new GetConversationHistory({ conversationRepository, messageRepository });
 
+  // use cases — catalog
+  const catalogUseCases = {
+    searchProducts:    new SearchProducts({ productRepository }),
+    createProduct:     new CreateProduct({ productRepository }),
+    updateProduct:     new UpdateProduct({ productRepository, eventBus }),
+    deleteProduct:     new DeleteProduct({ productRepository }),
+    createPricingRule: new CreatePricingRule({ pricingRuleRepository }),
+    updatePricingRule: new UpdatePricingRule({ pricingRuleRepository }),
+    deletePricingRule: new DeletePricingRule({ pricingRuleRepository }),
+    getPricingRule:    new GetPricingRule({ pricingRuleRepository }),
+    listPricingRules:  new ListPricingRules({ pricingRuleRepository }),
+    createPriceList:   new CreatePriceList({ priceListRepository }),
+    managePriceList:   new ManagePriceList({ priceListRepository }),
+    listPriceLists:    new ListPriceLists({ priceListRepository }),
+    getPriceForProduct: new GetPriceForProduct({ productRepository, pricingRuleRepository, priceCalculator }),
+  };
+
   // controllers
   const webhookController      = new WebhookController({ handleIncomingMessage });
   const conversationController = new ConversationController({ getConversationHistory });
+  const catalogController      = new CatalogController(catalogUseCases);
 
   const app = createApp({
     webhookRoutes: webhookRoutes({
@@ -90,9 +134,9 @@ async function bootstrap() {
       tenantMiddleware: passthrough,
     }),
     catalogRoutes: catalogRoutes({
-      catalogController: stubController,
-      authMiddleware:    passthrough,
-      tenantMiddleware:  passthrough,
+      catalogController,
+      authMiddleware:  passthrough,
+      tenantMiddleware: passthrough,
     }),
     workflowRoutes: workflowRoutes({
       workflowController: stubController,

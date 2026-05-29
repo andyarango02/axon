@@ -6,11 +6,10 @@ class ManagePricingRules {
   }
 
   /**
-   * @param {{ tenantId: string, action: 'create'|'update'|'delete', payload: object, executedBy: string }} input
-   * @returns {Promise<void>}
+   * @deprecated Use CreatePricingRule / UpdatePricingRule / DeletePricingRule instead.
    */
-  async execute(input) {
-    throw new Error('Not implemented');
+  async execute(_input) {
+    throw new Error('Deprecated: use CreatePricingRule, UpdatePricingRule, or DeletePricingRule');
   }
 }
 
