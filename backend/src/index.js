@@ -5,6 +5,8 @@ const config = require('./shared/config');
 // ── Infrastructure ──────────────────────────────────────────
 const { getSupabaseClient } = require('./infrastructure/persistence/supabase/SupabaseClient');
 const InMemoryEventBus      = require('./infrastructure/events/InMemoryEventBus');
+const { getOpenAIClient }   = require('./infrastructure/ai/openai/OpenAIClient');
+const OpenAIService         = require('./infrastructure/ai/openai/OpenAIService');
 
 // ── Repositories ────────────────────────────────────────────
 const CustomerRepository     = require('./infrastructure/persistence/supabase/CustomerRepository');
@@ -88,10 +90,18 @@ async function bootstrap() {
   // domain services
   const priceCalculator = new PriceCalculator();
 
-  // use cases — conversation
+  // AI service — null when OPENAI_API_KEY is absent (storage-only mode)
+  const aiService = config.openai.apiKey
+    ? new OpenAIService(getOpenAIClient(), { model: config.openai.model })
+    : null;
+
+  if (!aiService) {
+    console.warn('[axon] OPENAI_API_KEY not set — running in storage-only mode (no AI processing)');
+  }
+
+  // use cases — conversation (partial: HandleIncomingMessage is wired after catalog + quotation)
   // eslint-disable-next-line no-unused-vars
   const findOrCreateCustomer   = new FindOrCreateCustomer({ customerRepository, eventBus });
-  const handleIncomingMessage  = new HandleIncomingMessage({ conversationRepository, customerRepository, messageRepository, eventBus });
   const getConversationHistory = new GetConversationHistory({ conversationRepository, messageRepository });
 
   // use cases — catalog
@@ -123,6 +133,17 @@ async function bootstrap() {
     listQuotations:   new ListQuotations({ quotationRepository }),
     getQuotationById: new GetQuotationById({ quotationRepository }),
   };
+
+  // HandleIncomingMessage — wired after catalog + quotation use cases are ready
+  const handleIncomingMessage = new HandleIncomingMessage({
+    conversationRepository,
+    customerRepository,
+    messageRepository,
+    eventBus,
+    aiService,
+    searchProducts:        catalogUseCases.searchProducts,
+    generateQuotationDraft: quotationUseCases.generateQuotationDraft,
+  });
 
   // controllers
   const webhookController      = new WebhookController({ handleIncomingMessage });
