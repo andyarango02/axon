@@ -40,13 +40,30 @@ class QuotationController {
 
   async approve(req, res, next) {
     try {
-      throw new Error('Not implemented');
+      const { tenantId } = req.query;
+      if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+      const { userId } = req.body;
+      const quotation = await this.uc.approveQuotation.execute({
+        tenantId,
+        quotationId: req.params.id,
+        approvedBy: userId,
+      });
+      res.json(quotation);
     } catch (err) { next(err); }
   }
 
   async reject(req, res, next) {
     try {
-      throw new Error('Not implemented');
+      const { tenantId } = req.query;
+      if (!tenantId) return res.status(400).json({ error: 'tenantId is required' });
+      const { userId, reason } = req.body;
+      const quotation = await this.uc.rejectQuotation.execute({
+        tenantId,
+        quotationId: req.params.id,
+        rejectedBy: userId,
+        reason,
+      });
+      res.json(quotation);
     } catch (err) { next(err); }
   }
 

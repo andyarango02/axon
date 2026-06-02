@@ -49,6 +49,8 @@ const GetPriceForProduct = require('./application/catalog/use-cases/GetPriceForP
 const GenerateQuotationDraft = require('./application/quotation/use-cases/GenerateQuotationDraft');
 const ListQuotations         = require('./application/quotation/use-cases/ListQuotations');
 const GetQuotationById       = require('./application/quotation/use-cases/GetQuotationById');
+const ApproveQuotation       = require('./application/quotation/use-cases/ApproveQuotation');
+const RejectQuotation        = require('./application/quotation/use-cases/RejectQuotation');
 
 // ── Controllers ─────────────────────────────────────────────
 const WebhookController      = require('./interface/http/controllers/WebhookController');
@@ -132,6 +134,8 @@ async function bootstrap() {
     }),
     listQuotations:   new ListQuotations({ quotationRepository }),
     getQuotationById: new GetQuotationById({ quotationRepository }),
+    approveQuotation: new ApproveQuotation({ quotationRepository, eventBus }),
+    rejectQuotation:  new RejectQuotation({ quotationRepository, eventBus }),
   };
 
   // HandleIncomingMessage — wired after catalog + quotation use cases are ready
