@@ -13,7 +13,7 @@ const MessageRepository      = require('./infrastructure/persistence/supabase/Me
 const ProductRepository      = require('./infrastructure/persistence/supabase/ProductRepository');
 const PricingRuleRepository  = require('./infrastructure/persistence/supabase/PricingRuleRepository');
 const PriceListRepository    = require('./infrastructure/persistence/supabase/PriceListRepository');
-// const QuotationRepository         = require('./infrastructure/persistence/supabase/QuotationRepository');
+const QuotationRepository    = require('./infrastructure/persistence/supabase/QuotationRepository');
 // const OpportunityRepository       = require('./infrastructure/persistence/supabase/OpportunityRepository');
 // const WorkflowDefinitionRepository = require('./infrastructure/persistence/supabase/WorkflowDefinitionRepository');
 // const WorkflowExecutionRepository = require('./infrastructure/persistence/supabase/WorkflowExecutionRepository');
@@ -42,12 +42,17 @@ const CreatePriceList   = require('./application/catalog/use-cases/CreatePriceLi
 const ManagePriceList   = require('./application/catalog/use-cases/ManagePriceList');
 const ListPriceLists    = require('./application/catalog/use-cases/ListPriceLists');
 const GetPriceForProduct = require('./application/catalog/use-cases/GetPriceForProduct');
-// const GenerateQuotationDraft = require('./application/quotation/use-cases/GenerateQuotationDraft');
+
+// ── Use Cases — quotation ────────────────────────────────────
+const GenerateQuotationDraft = require('./application/quotation/use-cases/GenerateQuotationDraft');
+const ListQuotations         = require('./application/quotation/use-cases/ListQuotations');
+const GetQuotationById       = require('./application/quotation/use-cases/GetQuotationById');
 
 // ── Controllers ─────────────────────────────────────────────
 const WebhookController      = require('./interface/http/controllers/WebhookController');
 const ConversationController = require('./interface/http/controllers/ConversationController');
 const CatalogController      = require('./interface/http/controllers/CatalogController');
+const QuotationController    = require('./interface/http/controllers/QuotationController');
 
 // ── Interface ───────────────────────────────────────────────
 const { createApp }      = require('./interface/app');
@@ -78,6 +83,7 @@ async function bootstrap() {
   const productRepository      = new ProductRepository(supabase);
   const pricingRuleRepository  = new PricingRuleRepository(supabase);
   const priceListRepository    = new PriceListRepository(supabase);
+  const quotationRepository    = new QuotationRepository(supabase);
 
   // domain services
   const priceCalculator = new PriceCalculator();
@@ -105,10 +111,24 @@ async function bootstrap() {
     getPriceForProduct: new GetPriceForProduct({ productRepository, pricingRuleRepository, priceCalculator }),
   };
 
+  // use cases — quotation
+  const quotationUseCases = {
+    generateQuotationDraft: new GenerateQuotationDraft({
+      quotationRepository,
+      productRepository,
+      pricingRuleRepository,
+      priceCalculator,
+      eventBus,
+    }),
+    listQuotations:   new ListQuotations({ quotationRepository }),
+    getQuotationById: new GetQuotationById({ quotationRepository }),
+  };
+
   // controllers
   const webhookController      = new WebhookController({ handleIncomingMessage });
   const conversationController = new ConversationController({ getConversationHistory });
   const catalogController      = new CatalogController(catalogUseCases);
+  const quotationController    = new QuotationController(quotationUseCases);
 
   const app = createApp({
     webhookRoutes: webhookRoutes({
@@ -119,9 +139,9 @@ async function bootstrap() {
       authController: stubController,
     }),
     quotationRoutes: quotationRoutes({
-      quotationController: stubController,
-      authMiddleware:      passthrough,
-      tenantMiddleware:    passthrough,
+      quotationController,
+      authMiddleware:  passthrough,
+      tenantMiddleware: passthrough,
     }),
     pipelineRoutes: pipelineRoutes({
       pipelineController: stubController,

@@ -6,11 +6,11 @@ class ListQuotations {
   }
 
   /**
-   * @param {{ tenantId: string, filters?: object, page?: number, limit?: number }} input
-   * @returns {Promise<{ data: object[], total: number }>}
+   * @param {{ tenantId: string, filters?: { status?, customerId?, conversationId? } }} input
+   * @returns {Promise<import('../../../domain/quotation/entities/Quotation')[]>}
    */
-  async execute(input) {
-    throw new Error('Not implemented');
+  async execute({ tenantId, filters = {} }) {
+    return this.quotationRepository.findAll(tenantId, filters);
   }
 }
 

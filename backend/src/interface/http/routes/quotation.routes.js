@@ -7,6 +7,7 @@ function quotationRoutes({ quotationController, authMiddleware, tenantMiddleware
 
   router.use(authMiddleware, tenantMiddleware);
 
+  router.post('/',   (req, res, next) => quotationController.generate(req, res, next));
   router.get('/',    (req, res, next) => quotationController.list(req, res, next));
   router.get('/:id', (req, res, next) => quotationController.getById(req, res, next));
   router.post('/:id/approve', (req, res, next) => quotationController.approve(req, res, next));
