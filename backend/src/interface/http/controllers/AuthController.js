@@ -1,30 +1,24 @@
 'use strict';
 
 class AuthController {
-  constructor({ jwtService, userRepository }) {
-    this.jwtService = jwtService;
-    this.userRepository = userRepository;
+  constructor(supabaseClient) {
+    this.supabase = supabaseClient;
   }
 
-  async login(req, res, next) {
+  async getMe(req, res, next) {
     try {
-      throw new Error('Not implemented');
-    } catch (err) {
-      next(err);
-    }
-  }
+      const { data: profile } = await this.supabase
+        .from('user_profiles')
+        .select('*')
+        .eq('id', req.user.id)
+        .single();
 
-  async refresh(req, res, next) {
-    try {
-      throw new Error('Not implemented');
-    } catch (err) {
-      next(err);
-    }
-  }
-
-  async logout(req, res, next) {
-    try {
-      throw new Error('Not implemented');
+      res.json({
+        user:     req.user,
+        profile:  profile ?? null,
+        role:     profile?.role ?? null,
+        tenantId: profile?.tenant_id ?? null,
+      });
     } catch (err) {
       next(err);
     }

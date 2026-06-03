@@ -9,24 +9,50 @@ const FIELD_LABELS = {
   additionalNotes:  'especificaciones técnicas o condiciones adicionales',
 };
 
+const TONE_INSTRUCTIONS = {
+  friendly:     'Sé cálido, cercano y empático. Hablá como si conocieras al cliente. Podés usar emojis con moderación si encajan naturalmente.',
+  professional: 'Sé formal, claro y directo. Mantenés un trato cortés pero sin informalidades.',
+  casual:       'Sé informal y descontracturado, como un amigo que sabe del tema. Usá lenguaje coloquial de WhatsApp.',
+};
+
 /**
  * @param {Array<{ role: string, content: string }>} messages
  * @param {string[]} missingFields - Ordered list of fields still needed (highest priority first)
+ * @param {object} botConfig - Tenant bot configuration
  * @returns {Array<{ role: string, content: string }>}
  */
-function gatherRequirementsPrompt(messages, missingFields) {
+function gatherRequirementsPrompt(messages, missingFields, botConfig = {}) {
+  const {
+    name                = 'Asistente',
+    businessName        = '',
+    businessDescription = '',
+    tone                = 'friendly',
+    additionalContext   = '',
+  } = botConfig;
+
   const fieldLines = missingFields
     .map((f) => `- ${f}: ${FIELD_LABELS[f] || f}`)
     .join('\n');
 
-  const system = `Sos un asistente de ventas por WhatsApp, amable y profesional, que habla en español rioplatense.
+  const toneInstruction = TONE_INSTRUCTIONS[tone] || TONE_INSTRUCTIONS.friendly;
+
+  const businessLines = [
+    businessName        && `Nombre del negocio: ${businessName}`,
+    businessDescription && `Descripción: ${businessDescription}`,
+    additionalContext   && `Contexto adicional: ${additionalContext}`,
+  ].filter(Boolean).join('\n');
+
+  const system = `Sos ${name}${businessName ? `, asistente de ventas de ${businessName}` : ', un asistente de ventas'}, que atiende por WhatsApp en español rioplatense.
 Tu tarea es formular la próxima pregunta para obtener información necesaria para la cotización.
+${businessLines ? `\nCONTEXTO DEL NEGOCIO:\n${businessLines}\n` : ''}
+TONO: ${toneInstruction}
 
 REGLAS:
 - Preguntá por UN SOLO campo a la vez (el primero de la lista de prioridad)
 - Sé natural y conciso, como en una conversación real de WhatsApp
 - No menciones que seguís un proceso ni que hay una lista de campos pendientes
 - Adaptá el tono al historial de la conversación
+- Si el cliente ya dio información, reconocela brevemente antes de preguntar lo siguiente
 
 CAMPOS AÚN FALTANTES (ordenados por prioridad):
 ${fieldLines}

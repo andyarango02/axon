@@ -54,8 +54,8 @@ class OpenAIService extends IAIService {
     return this._complete(extractIntentPrompt(messages), 'extractIntent');
   }
 
-  async gatherRequirements(messages, missingFields) {
-    return this._complete(gatherRequirementsPrompt(messages, missingFields), 'gatherRequirements');
+  async gatherRequirements(messages, missingFields, botConfig = {}) {
+    return this._complete(gatherRequirementsPrompt(messages, missingFields, botConfig), 'gatherRequirements');
   }
 
   /**

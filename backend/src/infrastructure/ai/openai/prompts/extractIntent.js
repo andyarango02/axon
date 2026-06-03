@@ -28,6 +28,24 @@ NUNCA pongas una duración de servicio en "deadline".
 Solo usa "deadline" para fechas concretas de entrega ("para el 15 de julio", "antes de fin de año").
 ═════════════════════════════════════════════════════════════════
 
+═══ FRECUENCIA DE PUBLICACIONES — no confundir con quantity ════
+La frecuencia de publicaciones (posts, historias, reels) NO es la quantity.
+La quantity es SIEMPRE la cantidad de MESES de servicio contratado.
+
+Cuando el cliente mencione frecuencia de contenido, guardala en additionalNotes y
+NO la pongas en quantity. Tampoco pongas "quantity" en missingFields si ya indicó
+cuántos meses quiere el servicio.
+
+  "una publicación cada 3 días"   → additionalNotes: "~10 publicaciones/mes", quantity: null si no dijo meses
+  "2 posts por semana"            → additionalNotes: "~8 publicaciones/mes"
+  "publicaciones diarias"         → additionalNotes: "~30 publicaciones/mes"
+  "1 post por semana"             → additionalNotes: "~4 publicaciones/mes"
+  "3 reels al mes"                → additionalNotes: "3 reels/mes"
+
+Si en la misma frase indica frecuencia Y duración, extraé ambas:
+  "2 posts por semana durante 3 meses" → quantity: 3, additionalNotes: "~8 publicaciones/mes"
+═════════════════════════════════════════════════════════════════
+
 VOCABULARIO DE SERVICIOS — normalizá el productType según esta tabla:
 
   Menciona...                                           → productType

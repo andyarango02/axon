@@ -8,23 +8,29 @@ const CustomerIdentified = require('../../../domain/customer/events/CustomerIden
 const MessageReceived    = require('../../../domain/conversation/events/MessageReceived');
 const IntentType         = require('../../../shared/ai/IntentType');
 
-// Intents that are part of the quotation funnel
-const QUOTE_INTENTS = new Set([IntentType.REQUEST_QUOTE, IntentType.PROVIDE_INFO]);
+const QUOTE_INTENTS          = new Set([IntentType.REQUEST_QUOTE, IntentType.PROVIDE_INFO]);
+const REQUIRED_QUOTE_FIELDS  = ['productType', 'quantity'];
+
+/**
+ * Merges newly extracted data on top of previously accumulated data.
+ * Non-null values in `next` override `prev`; null values in `next` are ignored
+ * so a field extracted on turn 1 is never wiped by a null on turn 2.
+ */
+function mergeExtractedData(prev, next) {
+  const merged = { ...(prev || {}) };
+  for (const [key, value] of Object.entries(next || {})) {
+    if (value !== null && value !== undefined) merged[key] = value;
+  }
+  return merged;
+}
 
 class HandleIncomingMessage {
-  /**
-   * @param {{
-   *   conversationRepository, customerRepository, messageRepository, eventBus,
-   *   aiService?: object|null,         — null → storage-only mode (no OPENAI_API_KEY)
-   *   searchProducts?: object|null,    — SearchProducts use case
-   *   generateQuotationDraft?: object|null — GenerateQuotationDraft use case
-   * }} deps
-   */
   constructor({
     conversationRepository, customerRepository, messageRepository, eventBus,
     aiService             = null,
     searchProducts        = null,
     generateQuotationDraft = null,
+    tenantRepository      = null,
   }) {
     this.conversationRepository  = conversationRepository;
     this.customerRepository      = customerRepository;
@@ -33,11 +39,9 @@ class HandleIncomingMessage {
     this.aiService               = aiService;
     this.searchProducts          = searchProducts;
     this.generateQuotationDraft  = generateQuotationDraft;
+    this.tenantRepository        = tenantRepository;
   }
 
-  /**
-   * @param {{ tenantId: string, from: string, body: string, channel?: string, externalId?: string }} input
-   */
   async execute({ tenantId, from, body, channel = 'WHATSAPP', externalId = null }) {
     // ── 1. Find or create customer ──────────────────────────
     let customer = await this.customerRepository.findByPhone(tenantId, from);
@@ -73,7 +77,7 @@ class HandleIncomingMessage {
       messageId: savedMsg.id, content: body, from,
     }));
 
-    // ── 5. Storage-only mode — no AI configured ─────────────
+    // ── 5. Storage-only mode ────────────────────────────────
     if (!this.aiService) {
       return {
         conversationId: conversation.id,
@@ -84,13 +88,13 @@ class HandleIncomingMessage {
       };
     }
 
-    // ── 6. AI processing — errors degrade gracefully ────────
+    // ── 6. AI processing ────────────────────────────────────
     let aiResult = {};
     try {
       aiResult = await this._processWithAI(tenantId, customer.id, conversation);
       if (aiResult.updatedConversation) {
         await this.conversationRepository.save(aiResult.updatedConversation);
-        delete aiResult.updatedConversation; // strip internal field from response
+        delete aiResult.updatedConversation;
       }
     } catch (err) {
       console.error('[HandleIncomingMessage] AI processing error:', err.message);
@@ -106,36 +110,44 @@ class HandleIncomingMessage {
     };
   }
 
-  // ── Private: AI orchestration ──────────────────────────────
-
   async _processWithAI(tenantId, customerId, conversation) {
-    // Build conversation history for the AI context window
-    const messages = await this.messageRepository.findByConversation(tenantId, conversation.id);
-    const history  = messages.map(m => ({
+    const [messages, botConfig] = await Promise.all([
+      this.messageRepository.findByConversation(tenantId, conversation.id),
+      this.tenantRepository ? this.tenantRepository.getBotConfig(tenantId) : Promise.resolve({}),
+    ]);
+
+    const history = messages.map(m => ({
       role:    m.direction === 'INBOUND' ? 'user' : 'assistant',
       content: m.body,
     }));
 
-    // Extract intent from full history
     const intentResult = await this.aiService.extractIntent(history);
 
-    // Merge AI result into conversation context (preserve existing fields)
+    // ── Accumulate: merge new extractedData over previously known fields ──
+    const extractedData = mergeExtractedData(
+      conversation.context?.extractedData,
+      intentResult.extractedData,
+    );
+
+    // ── Recalculate from merged data — don't trust AI's missingFields alone ──
+    const missingFields = REQUIRED_QUOTE_FIELDS.filter(f => !extractedData[f]);
+
     const context = {
       ...(conversation.context || {}),
       lastIntent:    intentResult.intent,
       confidence:    intentResult.confidence,
-      extractedData: intentResult.extractedData,
-      missingFields: intentResult.missingFields,
+      extractedData,
+      missingFields,
     };
 
-    // Guard: quotation already pending — just track new intent, no re-quote
+    // Guard: quotation already pending — track new intent, no re-quote
     if (context.quotationId) {
       conversation.context = context;
       return {
-        aiProcessed:    true,
-        intent:         intentResult.intent,
+        aiProcessed:      true,
+        intent:           intentResult.intent,
         quotationPending: true,
-        quotationId:    context.quotationId,
+        quotationId:      context.quotationId,
         updatedConversation: conversation,
       };
     }
@@ -150,47 +162,44 @@ class HandleIncomingMessage {
       };
     }
 
-    // Quote intent but missing required fields — ask next question
-    if (intentResult.missingFields.length > 0) {
-      const gatherResult         = await this.aiService.gatherRequirements(history, intentResult.missingFields);
-      context.lastAIResponse     = gatherResult.response;
-      context.aiStage            = 'GATHERING_INFO';
-      conversation.context       = context;
+    // Still missing required fields — ask next question
+    if (missingFields.length > 0) {
+      const gatherResult     = await this.aiService.gatherRequirements(history, missingFields, botConfig);
+      context.lastAIResponse = gatherResult.response;
+      context.aiStage        = 'GATHERING_INFO';
+      conversation.context   = context;
       return {
         aiProcessed:   true,
         intent:        intentResult.intent,
-        missingFields: intentResult.missingFields,
+        missingFields,
         nextQuestion:  gatherResult.response,
         updatedConversation: conversation,
       };
     }
 
     // All required fields present — attempt catalog resolution
-    const { productType, quantity } = intentResult.extractedData;
+    const { productType, quantity } = extractedData;
 
     if (!productType || !quantity) {
-      // Edge case: AI flagged no missing fields but extractedData is still incomplete
+      // Edge case: merged data still incomplete despite no missingFields
       context.aiStage      = 'GATHERING_INFO';
       context.lastAIResponse = null;
       conversation.context = context;
       return { aiProcessed: true, intent: intentResult.intent, updatedConversation: conversation };
     }
 
-    // Search catalog using SearchProducts use case
     const searchResults = await this.searchProducts.execute({
       tenantId,
       query:   productType,
       filters: { status: 'ACTIVE' },
     });
 
-    // Record all catalog matches for traceability
     context.catalogMatches = [{
       productType,
       quantity,
       matches: searchResults.map(p => ({ id: p.id, name: p.name, sku: p.sku, category: p.category })),
     }];
 
-    // Resolve: 0 → no match | 1 → clear | 2+ → check exact name | else ambiguous
     const resolved = this._resolveSingleProduct(searchResults, productType);
 
     if (!resolved) {
@@ -207,7 +216,6 @@ class HandleIncomingMessage {
       };
     }
 
-    // Product resolved — generate quotation
     const quotation = await this.generateQuotationDraft.execute({
       tenantId,
       customerId,
@@ -229,12 +237,6 @@ class HandleIncomingMessage {
     };
   }
 
-  /**
-   * Returns the single matching product, or null if the match is ambiguous.
-   * - 0 results → null (no match)
-   * - 1 result  → return it (clear match)
-   * - 2+ results → exact name match wins; otherwise null (ambiguous)
-   */
   _resolveSingleProduct(results, productType) {
     if (results.length === 0) return null;
     if (results.length === 1) return results[0];

@@ -64,6 +64,22 @@ class ConversationRepository extends IConversationRepository {
     return fromRow(data);
   }
 
+  async findAll(tenantId, filters = {}) {
+    let q = this.client
+      .from(this.table)
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .is('deleted_at', null)
+      .order('updated_at', { ascending: false });
+
+    if (filters.status)     q = q.eq('status',      filters.status);
+    if (filters.customerId) q = q.eq('customer_id', filters.customerId);
+
+    const { data, error } = await q;
+    if (error) throw error;
+    return (data || []).map(fromRow);
+  }
+
   async findActiveByCustomer(tenantId, customerId) {
     const { data, error } = await this.client
       .from(this.table)

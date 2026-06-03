@@ -1,12 +1,14 @@
 'use strict';
 
 const express = require('express');
+const cors    = require('cors');
 const config = require('../shared/config');
 const { getSupabaseClient } = require('../infrastructure/persistence/supabase/SupabaseClient');
 
 function createApp(dependencies) {
   const app = express();
 
+  app.use(cors({ origin: 'http://localhost:5173' }));
   app.use(express.json());
   app.use(express.urlencoded({ extended: false }));
 
@@ -44,6 +46,7 @@ function createApp(dependencies) {
   app.use('/api/v1/conversations', dependencies.conversationRoutes);
   app.use('/api/v1/catalog',       dependencies.catalogRoutes);
   app.use('/api/v1/workflow',      dependencies.workflowRoutes);
+  app.use('/api/v1/settings',     dependencies.settingsRoutes);
 
   app.use(dependencies.errorHandler);
 

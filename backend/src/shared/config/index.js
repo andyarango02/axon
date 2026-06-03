@@ -17,10 +17,14 @@ const config = {
     model:  process.env.OPENAI_MODEL || 'gpt-4o',
   },
 
+  defaultTenantId: process.env.DEFAULT_TENANT_ID  || null,
+  webhookBaseUrl:  process.env.WEBHOOK_BASE_URL   || null,
+
   twilio: {
-    accountSid:    process.env.TWILIO_ACCOUNT_SID,
-    authToken:     process.env.TWILIO_AUTH_TOKEN,
-    whatsappFrom:  process.env.TWILIO_WHATSAPP_FROM,
+    accountSid:               process.env.TWILIO_ACCOUNT_SID,
+    authToken:                process.env.TWILIO_AUTH_TOKEN,
+    whatsappFrom:             process.env.TWILIO_WHATSAPP_FROM,
+    skipSignatureValidation:  process.env.TWILIO_SKIP_SIGNATURE_VALIDATION === 'true',
   },
 
   jwt: {
